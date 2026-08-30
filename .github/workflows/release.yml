@@ -81,5 +81,5 @@ jobs:
           gh release create "$VERSION" \
             --title "AnchorWin $VERSION" \
             --target main \
-            --body-file RELEASE_NOTES.md \
+            --notes-file RELEASE_NOTES.md \
             "dist/AnchorWin-$VERSION.exe"
