@@ -1,4 +1,4 @@
-<p align="center"><img src="https://raw.githubusercontent.com/nextscript/AnchorWin/refs/heads/main/logo.png" width="640" height="354"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/nextscript/AnchorWin/refs/heads/main/logo.png"></p>
 
 # AnchorWin v1.0
 
