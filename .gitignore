@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 
+# Tests (kept locally only)
+tests/
+
 # Runtime output
 logs/
 *.log
