@@ -2,58 +2,62 @@
 
 # AnchorWin v1.0
 
-**AnchorWin** is a small, lightweight Windows application with a graphical user interface that permanently binds applications to a specific monitor. It works completely locally — without DLL injection, hooks, cloud services, telemetry, or administrator privileges.
+**AnchorWin** is a small, lightweight Windows program with a GUI that permanently binds applications to a specific monitor. It works entirely locally — no DLL injection, no hooks, no cloud, no telemetry, and no administrator rights.
 
-## How It Works
+## How it works
 
-As soon as an EXE listed in the rules is started, AnchorWin automatically detects the process's main window and moves it to the configured monitor. The application runs continuously in the background via the system tray and automatically applies the saved rules — even after restarting the application or Windows, provided that **Autostart** is enabled.
+As soon as a configured EXE is started, AnchorWin automatically detects the process's main window and moves it to the stored monitor. The program runs permanently in the background (system tray) and applies the saved rules automatically — also after restarting the program and Windows, as long as "Autostart" is enabled.
 
-## Running the Application
+## Adding an application (both ways)
 
-Run directly with Python (Python 3.12+ recommended):
+When creating or editing an application rule, there are two equivalent selection paths:
+
+1. **From currently running applications**: the "Running Application" dropdown lists every process with a readable program path; click an entry and the rule takes over window + program automatically.
+2. **Manually via EXE selection**: with the "Select EXE …" button (file dialog) you can select any .exe, even if it is not running right now.
+
+Both paths fill the same rule fields; the manual selection remains fully intact.
+
+## Running
+
+Or start the built EXE directly (from the project folder after the build):
 
 ```sh
-pip install -r requirements.txt
-python main.py
+dist\AnchorWin.exe
 ```
 
-## Configuration File
+## Settings file
 
-The configuration is stored at `%APPDATA%\AnchorWin\config.json`.
-
-Portable mode can be enabled by placing a `portable.flag` file in the application directory. In portable mode, the configuration file is stored next to the EXE.
-
-A backup file (`config.json.bak`) is updated every time the configuration is saved. If the main configuration file becomes corrupted, AnchorWin automatically loads the backup copy.
+Configuration lives under `%APPDATA\AnchorWin\config.json` (portable mode: `portable.flag` in the program folder → settings are stored next to the EXE). A backup copy (`config.json.bak`) is updated on every save; if the main file is damaged, the backup copy is reloaded automatically.
 
 ### Example
 
 ```json
 {
-  "applications": [
-    {
-      "path": "C:\\Games\\SHProto\\SHProto-Win64-Shipping.exe",
-      "process_name": "SHProto-Win64-Shipping.exe",
-      "monitor": {
-        "monitor_index": 1,
-        "device_name": "\\\\.\\DISPLAY1",
-        "resolution": "2560x1440",
-        "position": [0, 0, 2560, 1440]
-      },
-      "move_on_start": true,
-      "keep_on_monitor": true,
-      "maximize": false
-    }
-  ],
-  "settings": {
-    "autostart": false,
-    "keep_all_on_monitor": true,
-    "start_minimized": false
+ "applications": [
+  {
+   "path": "C:\\Games\\SHProto\\SHProto-Win64-Shipping.exe",
+   "process_name": "SHProto-Win64-Shipping.exe",
+   "monitor": {
+    "monitor_index": 1,
+    "device_name": "\\\\.\\DISPLAY1",
+    "resolution": "2560x1440",
+    "position": [0, 0, 2560, 1440]
+   },
+   "move_on_start": true,
+   "keep_on_monitor": true,
+   "maximize": false
   }
+ ],
+ "settings": {
+  "autostart": false,
+  "keep_all_on_monitor": true,
+  "start_minimized": false
+ }
 }
 ```
 
-## System Tray
+## System tray
 
-* Tray icon — left-click to show or hide the application window
-* Right-click menu: **Open**, **Pause Rules** (toggle), **Reload Rules**, **Exit**
-* Closing the application window only hides it in the system tray
+- Icon in the tray (left click: show/hide)
+- Right-click menu: *Open*, *Pause Rules* (toggle), *Reload Rules*, *Exit*
+- Closing the window only hides the window in the tray
