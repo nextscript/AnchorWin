@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+
+# Runtime output
+logs/
+*.log
+dist/
+
+# PyInstaller (keep build/AnchorWin.spec, drop build cache)
+build/AnchorWin/
