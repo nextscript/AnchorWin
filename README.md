@@ -17,14 +17,6 @@ When creating or editing an application rule, there are two equivalent selection
 
 Both paths fill the same rule fields; the manual selection remains fully intact.
 
-## Running
-
-Or start the built EXE directly (from the project folder after the build):
-
-```sh
-dist\AnchorWin.exe
-```
-
 ## Settings file
 
 Configuration lives under `%APPDATA\AnchorWin\config.json` (portable mode: `portable.flag` in the program folder → settings are stored next to the EXE). A backup copy (`config.json.bak`) is updated on every save; if the main file is damaged, the backup copy is reloaded automatically.
