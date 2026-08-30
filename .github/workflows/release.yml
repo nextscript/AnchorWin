@@ -61,6 +61,7 @@ jobs:
     if: needs.detect-version.outputs.version != ''
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: anchorwin-win
