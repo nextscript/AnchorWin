@@ -252,7 +252,7 @@ class MainWindow(QMainWindow):
         self.log = log
         self.setWindowTitle(APP_TITLE)
         self.setObjectName("AnchorWinMainWindow")
-
+        self.resize(430, 360)
         central = QWidget(self)
         layout = QVBoxLayout(central)
         self.table = QTableWidget(0, 3, central)

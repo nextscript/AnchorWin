@@ -21,6 +21,7 @@ _DWM = _load_dwm()
 DWMWA_CLOAKED = 14
 
 SW_MAXIMIZE = 3
+SW_RESTORE = 9
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
 GWL_EXSTYLE = -20
@@ -181,32 +182,48 @@ def window_monitor_device_name(hwnd):
     return info.szDevice
 
 
+def is_maximized(hwnd) -> bool:
+    return bool(user32.IsZoomed(wintypes.HWND(hwnd)))
+
+
 def move_to_monitor_rect(hwnd, monitor):
     """Move window onto the monitor, keeping its current size (spec §12).
 
-    Returns True when the window demonstrably ended up inside the monitor.
+    Returns True when the window demonstrably belongs to the monitor.
 
-    A maximized window ignores position-only SetWindowPos calls (and Chrome
-    additionally ignores SWP_NOSIZE moves), so the target geometry is always
-    given explicitly and a maximized window is re-maximized on the target
-    monitor (spec §35). The ±8 px tolerance covers the invisible resize
-    borders a maximized window carries.
+    A maximized window cannot be repositioned reliably with SetWindowPos:
+    capture the zoom state first, restore the window, re-read the restored
+    geometry (it can be very different from the maximized rectangle), move
+    the restored window, then maximize again so the frame snaps to the
+    monitor the window now sits on (spec §15, §35). Final verification is
+    the actual monitor ownership of the HWND (spec §17), not pixel equality:
+    invisible resize borders and extended frames make exact rectangles
+    unreliable.
     """
+    hwnd_arg = wintypes.HWND(hwnd)
+    if not user32.IsWindow(hwnd_arg):
+        return False
+    was_maximized = bool(user32.IsZoomed(hwnd_arg))
     rect = _window_rect(hwnd)
     if rect is None:
         return False
-    hwnd_arg = wintypes.HWND(hwnd)
-    zoomed = bool(user32.IsZoomed(hwnd_arg))
-    if zoomed:
-        left, top = monitor.left, monitor.top
-        width, height = monitor.width, monitor.height
-    else:
-        width = rect.right - rect.left
-        height = rect.bottom - rect.top
-        # Center the window on the target monitor; works with negative coords (§38).
-        left = monitor.left + (monitor.width - width) // 2
-        top = monitor.top + (monitor.height - height) // 2
-    user32.SetWindowPos(
+    if was_maximized:
+        user32.ShowWindow(hwnd_arg, SW_RESTORE)
+        if not user32.IsWindow(hwnd_arg):
+            return False
+        rect = _window_rect(hwnd)
+        if rect is None:
+            return False
+    width = rect.right - rect.left
+    height = rect.bottom - rect.top
+    if width <= 0 or height <= 0:
+        return False
+    # Center on the target monitor; works with negative desktop coordinates
+    # (§38). Clamp relative to the monitor, never against coordinate 0:
+    # an oversized window overflows but keeps its title bar on screen.
+    left = max(monitor.left, monitor.left + (monitor.width - width) // 2)
+    top = max(monitor.top, monitor.top + (monitor.height - height) // 2)
+    if not user32.SetWindowPos(
         hwnd_arg,
         None,
         left,
@@ -214,19 +231,11 @@ def move_to_monitor_rect(hwnd, monitor):
         width,
         height,
         SWP_NOZORDER | SWP_NOACTIVATE,
-    )
-    if zoomed:
-        user32.ShowWindow(hwnd_arg, SW_MAXIMIZE)
-    verify = _window_rect(hwnd)
-    if verify is None:
+    ):
         return False
-    inside = (
-        verify.left >= monitor.left - 8
-        and verify.top >= monitor.top - 8
-        and verify.right <= monitor.right + 8
-        and verify.bottom <= monitor.bottom + 8
-    )
-    return inside
+    if was_maximized:
+        user32.ShowWindow(hwnd_arg, SW_MAXIMIZE)
+    return window_monitor_device_name(hwnd) == monitor.device_name
 
 
 def maximize(hwnd):

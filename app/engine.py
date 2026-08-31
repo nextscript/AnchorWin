@@ -4,12 +4,14 @@ Pure state machine driven from QTimers (spec §25: no busy loops). The class
 contains no Qt code so it is testable headless; timers call proc_tick(),
 fast_tick() and keep_tick().
 """
+import os
 import time
 
 from app.monitor_manager import list_monitors
 from app.process_monitor import ProcessMonitor
 from app.window_manager import (
     find_main_window,
+    is_maximized,
     is_valid,
     maximize,
     move_to_monitor_rect,
@@ -36,6 +38,13 @@ PHASE_VERIFY = "verify"
 PHASE_BOUND = "bound"
 PHASE_GIVEN_UP = "given_up"
 
+
+def _rule_path_key(path):
+    """Normalized identity for a rule's executable path (spec §36)."""
+    try:
+        return os.path.normcase(os.path.abspath(path))
+    except (OSError, ValueError):
+        return os.path.normcase(path)
 
 class RuleRuntime:
     __slots__ = (
@@ -74,18 +83,62 @@ class RuleEngine:
     # ---- configuration ---------------------------------------------------
 
     def set_rules(self, rules):
-        """Rebuild runtimes from updated config, keeping live pids where possible."""
+        """Rebuild runtimes from updated config, migrating live state (spec §34-48).
+
+        Harmless edits preserve the whole runtime; a changed target monitor
+        starts a new move cycle; dead HWNDs are re-discovered.
+        """
         old_by_path = {}
         for rt in self.runtimes:
-            old_by_path[rt.rule.path] = (rt.pid, rt.hwnd, rt.phase)
+            old_by_path[_rule_path_key(rt.rule.path)] = rt
         self.runtimes = []
+        now = time.monotonic()
         for rule in rules:
             rt = RuleRuntime(rule)
-            previous = old_by_path.get(rule.path)
-            if previous:
-                rt.pid, rt.hwnd, rt.phase = previous
+            previous = old_by_path.get(_rule_path_key(rule.path))
+            if previous is not None:
+                self._migrate_runtime(rt, previous, rule, now)
             self.runtimes.append(rt)
         self.processes.set_rules(rules)
+
+    def _migrate_runtime(self, rt, previous, rule, now):
+        """Carry live state across a rule refresh, then normalize (spec §46, §47)."""
+        rt.pid = previous.pid
+        rt.hwnd = previous.hwnd
+        rt.phase = previous.phase
+        rt.deadline = previous.deadline
+        rt.verify_at = previous.verify_at
+        rt.attempts = previous.attempts
+        rt.status = previous.status
+
+        if rt.pid is None:
+            rt.hwnd = None
+            rt.phase = PHASE_IDLE
+            rt.status = NOT_RUNNING
+            return
+
+        monitor_changed = (
+            previous.rule.monitor.device_name != rule.monitor.device_name
+            or previous.rule.monitor.monitor_index != rule.monitor.monitor_index
+        )
+        if monitor_changed:
+            # New target: start a fresh move cycle (spec §41, §43).
+            rt.attempts = 0
+            rt.verify_at = 0.0
+
+        if rt.hwnd is not None and not is_valid(rt.hwnd):
+            self._lose_window(rt, now)
+            return
+
+        if monitor_changed and rule.move_on_start and rt.hwnd is not None:
+            rt.phase = PHASE_MOVING
+            rt.status = WINDOW_FOUND
+        elif rt.hwnd is None:
+            self._lose_window(rt, now)
+        elif not rule.move_on_start and rt.phase in (PHASE_MOVING, PHASE_VERIFY):
+            # Obsolete move sequence; cancel it (spec §42).
+            rt.phase = PHASE_IDLE
+            rt.status = WINDOW_FOUND
 
     def refresh_monitors(self):
         self.monitors = list_monitors()
@@ -127,6 +180,10 @@ class RuleEngine:
                 continue
             if rt.pid != pid:
                 rt.pid = pid
+                # Fresh launch: previous window/retry state is obsolete (§43).
+                rt.hwnd = None
+                rt.attempts = 0
+                rt.verify_at = 0.0
                 self._loginfo(f"Detected {rt.rule.process_name} PID {pid}")
                 rt.phase = PHASE_SEARCH
                 rt.deadline = now + WINDOW_SEARCH_TIMEOUT
@@ -155,6 +212,7 @@ class RuleEngine:
 
     def keep_tick(self):
         """500–1000 ms keep-on-monitor check (spec §13): move only when drifted."""
+        now = time.monotonic()
         for rt in self.runtimes:
             if rt.phase != PHASE_BOUND or not rt.rule.keep_on_monitor:
                 continue
@@ -162,9 +220,8 @@ class RuleEngine:
                 rt.status = PAUSED if self.paused else MONITOR_BOUND
                 continue
             if rt.hwnd is None or not is_valid(rt.hwnd):
-                rt.hwnd = None
-                rt.phase = PHASE_IDLE
-                rt.status = WINDOW_MISSING
+                # Process still runs but its window was recreated: rediscover.
+                self._lose_window(rt, now)
                 continue
             device = window_monitor_device_name(rt.hwnd)
             configured = self._resolve_monitor(rt)
@@ -210,6 +267,10 @@ class RuleEngine:
         self._attempt_move(rt, now)
 
     def _attempt_move(self, rt, now):
+        if rt.hwnd is None or not is_valid(rt.hwnd):
+            # A dead HWND is a discovery problem, not a move failure (§23-25).
+            self._lose_window(rt, now)
+            return
         configured = self._resolve_monitor(rt)
         if configured is None:
             rt.phase = PHASE_IDLE
@@ -228,11 +289,16 @@ class RuleEngine:
         elif rt.attempts >= MAX_MOVE_ATTEMPTS:
             rt.phase = PHASE_GIVEN_UP
             rt.status = UNMOVABLE
-            self._logerror(rt, "window could not be moved after 5 attempts")
+            self._logerror(rt, f"window could not be moved after {MAX_MOVE_ATTEMPTS} attempts")
         else:
             rt.verify_at = now + VERIFY_DELAY
+            self._log_move_failure(rt, configured)
+
 
     def _after_move_check(self, rt, now):
+        if rt.hwnd is None or not is_valid(rt.hwnd):
+            self._lose_window(rt, now)
+            return
         configured = self._resolve_monitor(rt)
         if configured is None:
             rt.phase = PHASE_IDLE
@@ -250,8 +316,7 @@ class RuleEngine:
             self._attempt_move(rt, now)
         else:
             rt.phase = PHASE_GIVEN_UP
-            rt.status = UNMOVABLE
-            self._logerror(rt, "window could not be moved after 5 attempts")
+            self._logerror(rt, f"window could not be moved after {MAX_MOVE_ATTEMPTS} attempts")
 
     def _reset(self, rt, status):
         rt.pid = None
@@ -259,6 +324,26 @@ class RuleEngine:
         rt.phase = PHASE_IDLE
         rt.attempts = 0
         rt.status = status
+
+    def _lose_window(self, rt, now):
+        """Stored HWND is dead: re-discover, this is not a move failure (§23-25, §50)."""
+        self._loginfo(f"{rt.rule.process_name} window HWND gone, searching again")
+        rt.hwnd = None
+        rt.phase = PHASE_SEARCH
+        rt.deadline = now + WINDOW_SEARCH_TIMEOUT
+        rt.status = WINDOW_MISSING
+
+    def _log_move_failure(self, rt, configured):
+        """One diagnostic line per real failed move attempt (spec §49)."""
+        if not self.log:
+            return
+        device = window_monitor_device_name(rt.hwnd) if rt.hwnd else None
+        self.log.warning(
+            f"{rt.rule.process_name} PID {rt.pid} HWND 0x{rt.hwnd:08X}: "
+            f"move attempt {rt.attempts}/{MAX_MOVE_ATTEMPTS} failed, "
+            f"target={configured.device_name}, current={device}, "
+            f"maximized={is_maximized(rt.hwnd)}, phase={rt.phase}"
+        )
 
     def _loginfo(self, message):
         if self.log:
