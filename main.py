@@ -61,7 +61,7 @@ def main() -> int:
     if not _single_instance():
         return 0
     QApplication.setApplicationName("AnchorWin")
-    QApplication.setApplicationVersion("1.0")
+    QApplication.setApplicationVersion("1.0.2")
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setWindowIcon(QIcon(str(icon_path())))

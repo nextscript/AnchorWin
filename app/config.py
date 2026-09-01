@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 APP_NAME = "AnchorWin"
-APP_TITLE = "AnchorWin v1.0.1"
+APP_TITLE = "AnchorWin v1.0.2"
 
 
 def is_frozen() -> bool:
