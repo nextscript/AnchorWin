@@ -1,6 +1,6 @@
 <p align="center"><img src="https://raw.githubusercontent.com/nextscript/AnchorWin/refs/heads/main/logo.png"></p>
 
-# AnchorWin v1.0.2
+# AnchorWin v1.0.3
 
 **AnchorWin** is a small, lightweight Windows program with a GUI that permanently binds applications to a specific monitor. It works entirely locally — no DLL injection, no hooks, no cloud, no telemetry, and no administrator rights.
 
