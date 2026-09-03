@@ -52,11 +52,12 @@ jobs:
       - name: Package onedir as zip
         env:
           VERSION: ${{ needs.detect-version.outputs.version }}
-        run: Compress-Archive -Path "dist/AnchorWin" -DestinationPath "dist/AnchorWin-$VERSION-win64.zip"
+        run: Compress-Archive -Path "dist/AnchorWin" -DestinationPath "dist/AnchorWin-$($env:VERSION)-win64.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: anchorwin-win
           path: dist/AnchorWin-*.zip
+          if-no-files-found: error
 
   release:
     needs: [detect-version, build]
